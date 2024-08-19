@@ -1,4 +1,4 @@
-use bevy::{prelude::*, render::camera::ScalingMode, window::close_on_esc};
+use bevy::{prelude::*, render::camera::ScalingMode};
 use bevy_rapier3d::prelude::*;
 
 mod mesh;
@@ -8,7 +8,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .add_systems(Startup, setup)
-        .add_systems(Update, (close_on_esc, handle_keypress, move_camera))
+        .add_systems(Update, (handle_keypress, move_camera))
         .run();
 }
 
@@ -21,7 +21,11 @@ struct MainCameraPhysics;
 fn handle_keypress(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut query_physics: Query<&mut ExternalForce, With<MainCameraPhysics>>,
+    mut exit: EventWriter<AppExit>,
 ) {
+    if keyboard_input.pressed(KeyCode::Escape) {
+        exit.send(AppExit::Success);
+    }
     let mut direction = Vec3::ZERO;
     let (x, y) = (Vec3::X, -Vec3::Z);
     // let (x, y) = (Vec3::X - Vec3::Z, -Vec3::X - Vec3::Z);
