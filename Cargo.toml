@@ -9,6 +9,7 @@ edition = "2021"
 bevy = "0.14.1"
 bevy_rapier3d = "0.27.0"
 itertools = "0.13.0"
+rand = "0.8.5"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]
