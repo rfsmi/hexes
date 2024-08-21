@@ -78,10 +78,10 @@ pub fn generate(n_sides: u32) -> Mesh {
         //             t2
         builder.add_triangle([t0, t2, t1]);
         // The bottom triangle, viewed from below:
-        //      t0---t2
+        //      b0---b2
         //     /    /  \
         //    /  /      \
-        //    t1
+        //    b1
         builder.add_triangle([b0, b1, b2]);
     }
     builder.into()

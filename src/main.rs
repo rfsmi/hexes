@@ -1,7 +1,6 @@
 use std::{collections::HashMap, f32::consts::PI};
 
 use bevy::{prelude::*, render::camera::ScalingMode};
-use bevy_rapier3d::prelude::*;
 use coord::{outline, Coord};
 use rand::prelude::*;
 
@@ -12,28 +11,30 @@ fn main() {
     App::new()
         .add_event::<SpawnHex>()
         .add_plugins(DefaultPlugins)
-        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .add_systems(Startup, setup)
-        .add_systems(Update, (handle_keypress, move_camera, spawn_hex))
+        .add_systems(
+            Update,
+            (
+                exit_on_esc,
+                spawn_hex_on_space,
+                move_camera_on_wasd,
+                spawn_hex,
+            ),
+        )
         .run();
 }
 
-#[derive(Component)]
-struct MainCamera;
-
-#[derive(Component)]
-struct MainCameraPhysics;
-
-fn handle_keypress(
-    keyboard_input: Res<ButtonInput<KeyCode>>,
-    hexes: Res<HexBoard>,
-    mut spawn_hex: EventWriter<SpawnHex>,
-    mut query_physics: Query<&mut ExternalForce, With<MainCameraPhysics>>,
-    mut exit: EventWriter<AppExit>,
-) {
+fn exit_on_esc(keyboard_input: Res<ButtonInput<KeyCode>>, mut exit: EventWriter<AppExit>) {
     if keyboard_input.pressed(KeyCode::Escape) {
         exit.send(AppExit::Success);
     }
+}
+
+fn spawn_hex_on_space(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    hexes: Res<HexBoard>,
+    mut spawn_hex: EventWriter<SpawnHex>,
+) {
     if keyboard_input.just_pressed(KeyCode::Space) {
         // Spawn a hex
         let coord = if hexes.board.is_empty() {
@@ -49,35 +50,41 @@ fn handle_keypress(
         );
         spawn_hex.send(SpawnHex(coord, colour));
     }
-    let mut direction = Vec3::ZERO;
-    let (x, y) = (Vec3::X, -Vec3::Z);
-    if keyboard_input.pressed(KeyCode::KeyA) {
-        direction -= x;
-    }
-    if keyboard_input.pressed(KeyCode::KeyD) {
-        direction += x;
-    }
-    if keyboard_input.pressed(KeyCode::KeyW) {
-        direction += y;
-    }
-    if keyboard_input.pressed(KeyCode::KeyS) {
-        direction -= y;
-    }
-    let direction = direction.normalize_or_zero();
-    for mut force in query_physics.iter_mut() {
-        force.force = 25.0 * direction;
-    }
 }
 
-fn move_camera(
-    mut query_camera_physics: Query<&Transform, (With<MainCameraPhysics>, Without<MainCamera>)>,
-    mut query_camera: Query<&mut Transform, (With<MainCamera>, Without<MainCameraPhysics>)>,
+#[derive(Component)]
+struct CameraSpeed(f32);
+
+fn move_camera_on_wasd(
+    time: Res<Time>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut camera_query: Query<(&mut Transform, &CameraSpeed), With<Camera>>,
+    mut hold_duration: Local<f32>,
 ) {
-    let Ok(&physics_transform) = query_camera_physics.get_single_mut() else {
-        return;
-    };
-    for mut transform in query_camera.iter_mut() {
-        transform.translation = physics_transform.translation;
+    let mut direction = Vec3::ZERO;
+    if keyboard_input.pressed(KeyCode::KeyW) {
+        direction -= Vec3::Z;
+    }
+    if keyboard_input.pressed(KeyCode::KeyS) {
+        direction += Vec3::Z;
+    }
+    if keyboard_input.pressed(KeyCode::KeyA) {
+        direction -= Vec3::X;
+    }
+    if keyboard_input.pressed(KeyCode::KeyD) {
+        direction += Vec3::X;
+    }
+    direction = direction.normalize_or_zero();
+    if direction == Vec3::ZERO {
+        *hold_duration = 0.0;
+    } else {
+        *hold_duration += time.delta_seconds();
+    }
+    // Ease movement out over 0.5 seconds
+    let factor = 1.0 - (1.0 - *hold_duration / 0.5).powi(5);
+    direction *= time.delta_seconds() * factor.clamp(0.0, 1.0);
+    for (mut transform, speed) in camera_query.iter_mut() {
+        transform.translation += direction * speed.0;
     }
 }
 
@@ -115,9 +122,7 @@ fn spawn_hex(
 /// set up a simple 3D scene
 fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
     // camera
-    let camera_position = Transform::from_xyz(0.0, 5.0, 5.0);
     commands.spawn((
-        MainCamera,
         Camera3dBundle {
             projection: OrthographicProjection {
                 // 15 world units per window height.
@@ -125,23 +130,10 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
                 ..default()
             }
             .into(),
-            transform: camera_position.looking_at(Vec3::ZERO, Vec3::Y),
+            transform: Transform::from_xyz(0.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
         },
-    ));
-    commands.spawn((
-        MainCameraPhysics,
-        RigidBody::Dynamic,
-        TransformBundle::from(camera_position),
-        GravityScale(0.0),
-        AdditionalMassProperties::Mass(1.0),
-        LockedAxes::ROTATION_LOCKED,
-        Sleeping::disabled(),
-        ExternalForce::default(),
-        Damping {
-            linear_damping: 20.0,
-            ..Default::default()
-        },
+        CameraSpeed(15.0),
     ));
 
     // hexes
